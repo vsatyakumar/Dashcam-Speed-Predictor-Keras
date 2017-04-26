@@ -30,44 +30,46 @@ features_size=2048
 
 
 def generator(features, labels, batch_size, timesteps, flag=0):
- 	# Create empty arrays to contain batch of features and labels#
- 	#batch_features=np.array(None, timesteps, features_size)
- 	#batch_labels=np.array(None, timesteps)
+	# Create empty arrays to contain batch of features and labels#
+	#batch_features=np.array(None, timesteps, features_size)
+	#batch_labels=np.array(None, timesteps)
 
- 	while True:
- 		count=0
- 		print("Iteration %d",count)
- 		batch_features=np.empty((1,timesteps, features_size))
- 		batch_labels=np.empty((1,timesteps))
+	while True:
+		count=0
+		print("Iteration number = ",count)
+		batch_features=np.empty((1,timesteps, features_size))
+		batch_labels=np.empty((1,timesteps))
 
- 		#print (batch_features.shape, batch_labels.shape )
- 		if flag:
- 			index= np.random.randint(0, nb_validation_samples, size = 1, dtype=np.int64)
- 		else:
- 			index= np.random.randint(0, nb_train_samples, size = 1, dtype=np.int64)
+		#print (batch_features.shape, batch_labels.shape )
+		if flag==0:
+			index= np.random.randint(0, nb_train_samples, size = 1, dtype=np.int64)
+		else:
+			index= np.random.randint(0, nb_validation_samples, size = 1, dtype=np.int64)
 
- 		dataX = features[index,]
- 		dataY = labels[index,]
-	 	for j in range(1,timesteps):
-	    	#batch_features, batch_labels= some_processing(features[j], labels, index, timesteps)
-		    	y = labels[index-j,]
-		    	x= features[index-j,]
-		    	dataX=np.append(x, dataX, axis=0)
-		    	dataY= np.append(y, dataY, axis=0)
-		   
-		dataX=np.expand_dims(dataX, axis=0)
-		dataY=np.expand_dims(dataY, axis=0)
-	
-		batch_features=np.append(dataX, batch_features, axis=0)
-		batch_labels=np.append(dataY, batch_labels, axis=0)
+			dataX = features[index,]
+			dataY = labels[index,]
 
-		count+=1
+			for j in range(1,timesteps):
+			#batch_features, batch_labels= some_processing(features[j], labels, index, timesteps)
+				y = labels[index-j,]
+				x= features[index-j,]
 
-		if count==batch_size:
-			print "Batch Features Dims , Batch Labels Dims ="
-			print(batch_features.input_shape, batch_labels.shape)
-			count=0
-			yield batch_features, batch_labels
+				dataX=np.append(x, dataX, axis=0)
+				dataY= np.append(y, dataY, axis=0)
+			
+			dataX=np.expand_dims(dataX, axis=0)
+			dataY=np.expand_dims(dataY, axis=0)
+			
+			batch_features=np.append(dataX, batch_features, axis=0)
+			batch_labels=np.append(dataY, batch_labels, axis=0)
+
+			count+=1
+
+			if count==batch_size:
+				print "Batch Features Dims , Batch Labels Dims ="
+				print(batch_features.input_shape, batch_labels.shape)
+				count=0
+				yield batch_features, batch_labels
 
 
 #Load Bottleneck Features (Resnet50) & Labels
@@ -104,7 +106,7 @@ model.add(LSTM(10, return_sequences=True, input_shape=(timesteps,256)))
 model.add(Dense(units=256))
 model.add(Activation('sigmoid'))
 model.add(Dense(units=1))
-model.add(Activation('linear'), output=)
+model.add(Activation('linear'))
 
 print('Compiling Model...')
 model.compile(optimizer='adam',
@@ -113,8 +115,8 @@ model.compile(optimizer='adam',
 
 print('Training...')
 
-model.fit_generator(generator(X_train, y_train, batch_size, timesteps),
-        steps_per_epoch=nb_train_samples, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
+model.fit_generator(generator(X_train, y_train, batch_size, timesteps, 0),
+	steps_per_epoch=nb_train_samples, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
 
 print('Training Successful - Saving Weights...')
 model.save_weights('/output/lstm_speed_model.h5')
