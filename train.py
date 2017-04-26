@@ -19,8 +19,7 @@ nb_epochs=50
 nb_train_samples = 14280
 nb_validation_samples = 6120
 lstm_num_timesteps=10 #How many timesteps of features are being fed per sample of a batch. 
-# the features were saved in order, so recreating the labels is easy
-#train_labels = np.array([0] * 1000 + [1] * 1000)
+
 
 batch_size=10 #Samples per batch.
 timesteps=10
@@ -30,9 +29,6 @@ features_size=2048
 
 
 def generator(features, labels, batch_size, timesteps, flag=0):
-	# Create empty arrays to contain batch of features and labels#
-	#batch_features=np.array(None, timesteps, features_size)
-	#batch_labels=np.array(None, timesteps)
 
 	while True:
 		count=0
@@ -50,7 +46,6 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 			dataY = labels[index,]
 
 			for j in range(1,timesteps):
-			#batch_features, batch_labels= some_processing(features[j], labels, index, timesteps)
 				y = labels[index-j,]
 				x= features[index-j,]
 
