@@ -66,8 +66,7 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 			count+=1
 
 			if count==batch_size:
-				print "Batch Features Dims , Batch Labels Dims ="
-				print(batch_features.input_shape, batch_labels.shape)
+				print("Batch Features Dims , Batch Labels Dims =" batch_features.input_shape, batch_labels.shape)
 				count=0
 				yield batch_features, batch_labels
 
