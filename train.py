@@ -1,9 +1,9 @@
+import os
 import numpy as np
 import tensorflow as tf
-from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential
-from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, merge, Bidirectional, Activation
-import os
+from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirectional, Activation, TimeDistributed, GlobalAveragePooling1D
+from keras.regularizers import l1
 from keras import applications
 # dimensions of our images.
 #img_width, img_height = 224, 224
@@ -32,38 +32,51 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 
 	while True:
 		count=0
-		print("Iteration number = ",count)
-		batch_features=np.empty((1,timesteps, features_size))
-		batch_labels=np.empty((1,timesteps))
+		batch_features=np.empty((timesteps, features_size,1))
+		batch_labels=np.empty((timesteps,1))
 
 		#print (batch_features.shape, batch_labels.shape )
-		if flag==0:
-			index= np.random.randint(0, nb_train_samples, size = 1, dtype=np.int64)
+		if flag == 0:
+			index= np.random.randint(0, nb_train_samples-1, size = 1, dtype=np.int64)
 		else:
-			index= np.random.randint(0, nb_validation_samples, size = 1, dtype=np.int64)
+			index= np.random.randint(0, nb_validation_samples-1, size = 1, dtype=np.int64)
 
-			dataX = features[index,]
-			dataY = labels[index,]
+		dataX = features[index,]
+		dataY = labels[index,]
+		print dataX
 
-			for j in range(1,timesteps):
-				y = labels[index-j,]
-				x= features[index-j,]
+		
+		#print dataX.shape
 
-				dataX=np.append(x, dataX, axis=0)
-				dataY= np.append(y, dataY, axis=0)
+		for j in range(1,timesteps):
 			
-			dataX=np.expand_dims(dataX, axis=0)
-			dataY=np.expand_dims(dataY, axis=0)
-			
-			batch_features=np.append(dataX, batch_features, axis=0)
-			batch_labels=np.append(dataY, batch_labels, axis=0)
+			x = features[index-j,]
+			y = labels[index-j,]
+			#print x
+			#x = np.expand_dims(x, axis=0)
+			#y = np.expand_dims(x, axis=0)
+			#print x.shape
 
-			count+=1
 
-			if count==batch_size:
-				print("Batch Features Dims , Batch Labels Dims =" batch_features.input_shape, batch_labels.shape)
-				count=0
-				yield batch_features, batch_labels
+			dataX = np.vstack((dataX,x))
+			dataY= np.vstack((dataY,y))
+			#print(dataX.shape)
+
+		dataX=np.expand_dims(dataX, axis=-1)
+		#print(dataX.shape)
+		dataY=np.expand_dims(dataY, axis=-1)
+		batch_features = np.dstack((batch_features,dataX))
+		batch_labels = np.dstack((batch_labels,dataY))
+		print (batch_features.shape, batch_labels.shape)
+
+		count+=1
+		if count==batch_size:
+			#print("Batch Features Dims , Batch Labels Dims =" batch_features.input_shape, batch_labels.shape)
+			print("Iteration number = ",count)
+			count=0
+			dataX=[]
+			dataY=[]
+			yield batch_features, batch_labels
 
 
 #Load Bottleneck Features (Resnet50) & Labels
@@ -92,14 +105,10 @@ X_validation.astype(float)
 print('Final Data Shape = [xtrain, xvalidation, ytain, yvalidation]', X_train.shape , X_validation.shape, y_train.shape, y_validation.shape)
 
 model = Sequential()
-model.add(LSTM(256, return_sequences=True, input_shape=(timesteps, features_size)))
-model.add(LSTM(10, return_sequences=True, input_shape=(timesteps,256)))
-
 # Regression layer
-
-model.add(Dense(units=256))
-model.add(Activation('sigmoid'))
-model.add(Dense(units=1))
+model.add(TimeDistributed(LSTM(units=128), input_shape=(batch_size, timesteps, features_size)))
+model.add(TimeDistributed(Dense(units=1), input_shape=(batch_size,timesteps)))
+model.add(GlobalAveragePooling1D())
 model.add(Activation('linear'))
 
 print('Compiling Model...')
@@ -110,7 +119,7 @@ model.compile(optimizer='adam',
 print('Training...')
 
 model.fit_generator(generator(X_train, y_train, batch_size, timesteps, 0),
-	steps_per_epoch=nb_train_samples, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
+	steps_per_epoch=batch_size, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
 
 print('Training Successful - Saving Weights...')
 model.save_weights('/output/lstm_speed_model.h5')
