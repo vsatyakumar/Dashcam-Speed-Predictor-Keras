@@ -26,7 +26,7 @@ lstm_num_timesteps=10 #How many timesteps of features are being fed per sample o
 
 
 batch_size=10 #Samples per batch.
-timesteps=10
+timesteps=10 #Timesteps per sample
 features_size=2048
 
 
@@ -155,8 +155,7 @@ model = buildmodel()
 
 print('Training...')
 
-model.fit_generator(generator(X_train, y_train, batch_size, timesteps, 0),
-	steps_per_epoch=batch_size, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
+model.fit_generator(generator(X_train, y_train, batch_size, timesteps, 0), steps_per_epoch=batch_size, epochs=5, verbose=1, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=batch_size)
 
 print('Training Successful - Saving Weights...')
 
