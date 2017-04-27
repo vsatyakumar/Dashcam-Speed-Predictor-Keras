@@ -2,12 +2,17 @@ import os
 import numpy as np
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirectional, Activation, TimeDistributed, GlobalAveragePooling1D
+from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirectional, Activation, TimeDistributed, GlobalAveragePooling1D, Merge
 from keras.regularizers import l1
 from keras import applications
+from keras.layers.normalization import BatchNormalization
+from keras import initializers
+
 # dimensions of our images.
 #img_width, img_height = 224, 224
 
+# fix random seed for reproducibility
+np.random.seed(7)
 #train_data_dir = '/input/data/images/train'
 #validation_data_dir = '/input/data/images/validation'
 nb_train_samples = 14280
@@ -25,9 +30,8 @@ batch_size=10 #Samples per batch.
 timesteps=10
 features_size=2048
 
+
 #Define Generator
-
-
 def generator(features, labels, batch_size, timesteps, flag=0):
 
 	while True:
@@ -79,8 +83,36 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 			yield batch_features, batch_labels
 
 
-#Load Bottleneck Features (Resnet50) & Labels
+#Buil Model
+def buildmodel():
+	model=Sequential()
+	#model.add(TimeDistributed(Dense(256,activation='relu', kernel_initializer=initializers.glorot_uniform), input_shape=(None, timesteps, features_size)))
+	#mode.add(TimeDistributed(BatchNormalization()))
+	#model.add(TimeDistributed(Dense(128, activation='relu', kernel_initializer=initializers.glorot_uniform)))
+	#model.add(TimeDistributed(BatchNormalization()))
 
+	# model.add(LSTM(output_dim=255,return_sequences=True))
+
+	left = Sequential()
+	left.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=True, input_shape=(timesteps,features_size)))
+	left.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=False, input_shape=(timesteps,features_size)))
+
+	right = Sequential()
+	right.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=True, input_shape=(timesteps,features_size)))
+	right.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=False, input_shape=(timesteps,features_size)))
+	model.add(Merge([left, right], mode = 'concat'))
+
+	model.add(Dense(1,activation='linear'))
+
+
+
+	print('Compiling Model...')
+	model.compile(optimizer='adam',
+		loss='mse',
+		metrics=['accuracy'])
+	
+	return model
+#Load Bottleneck Features (Resnet50) & Labels
 print('Loading Bottleneck Feature Data...')
 train_data = np.load(open('/input/bottleneck_features_train.npy'))
 validation_data = np.load(open('/input/bottleneck_features_validation.npy'))
@@ -104,17 +136,16 @@ X_validation.astype(float)
 
 print('Final Data Shape = [xtrain, xvalidation, ytain, yvalidation]', X_train.shape , X_validation.shape, y_train.shape, y_validation.shape)
 
-model = Sequential()
+#model = Sequential()
 # Regression layer
-model.add(TimeDistributed(LSTM(units=128), input_shape=(batch_size, timesteps, features_size)))
-model.add(TimeDistributed(Dense(units=1), input_shape=(batch_size,timesteps)))
-model.add(GlobalAveragePooling1D())
-model.add(Activation('linear'))
+#model.add(TimeDistributed(LSTM(units=128), input_shape=(None, timesteps, features_size)))
+#model.add(TimeDistributed(Dense(units=1), input_shape=(None,timesteps)))
+#model.add(GlobalAveragePooling1D())
+#model.add(Activation('linear'))
 
-print('Compiling Model...')
-model.compile(optimizer='adam',
-	loss='mse',
-	metrics=['accuracy'])
+print('Building Model...')
+
+model = buildmodel()
 
 print('Training...')
 
