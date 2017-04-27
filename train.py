@@ -6,7 +6,6 @@ from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirecti
 from keras.regularizers import l1
 from keras import applications
 from keras.layers.normalization import BatchNormalization
-from keras import initializers
 
 # dimensions of our images.
 #img_width, img_height = 224, 224
@@ -19,7 +18,7 @@ nb_train_samples = 14280
 nb_validation_samples = 6120
 nb_batches_per_epoch=10
 nb_epochs=50
-
+instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
 #MAIN
 nb_train_samples = 14280
 nb_validation_samples = 6120
@@ -47,7 +46,7 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 
 		dataX = features[index,]
 		dataY = labels[index,]
-		print dataX
+		#print dataX
 
 		
 		#print dataX.shape
@@ -94,16 +93,17 @@ def buildmodel():
 	# model.add(LSTM(output_dim=255,return_sequences=True))
 
 	left = Sequential()
-	left.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=True, input_shape=(timesteps,features_size)))
-	left.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=False, input_shape=(timesteps,features_size)))
+	left.add(Bidirectional(LSTM(128, activation ='relu', return_sequences=True), input_shape=(timesteps,features_size)))
+	left.add(Bidirectional(LSTM(128, activation = 'relu', return_sequences=False)))
 
 	right = Sequential()
-	right.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=True, input_shape=(timesteps,features_size)))
-	right.add(LSTM(128, dropout=0.2, use_bias=True, recurrent_dropout=0.2, return_sequences=False, input_shape=(timesteps,features_size)))
+	right.add(Bidirectional(LSTM(128, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
+	right.add(Bidirectional(LSTM(128, activation='relu', return_sequences=False)))
 	model.add(Merge([left, right], mode = 'concat'))
-
+	model.add(Dense(100, activation='relu'))
+	model.add(BatchNormalization())
+	model.add(Dropout(0.5))
 	model.add(Dense(1,activation='linear'))
-
 
 
 	print('Compiling Model...')
@@ -113,14 +113,20 @@ def buildmodel():
 	
 	return model
 #Load Bottleneck Features (Resnet50) & Labels
-print('Loading Bottleneck Feature Data...')
-train_data = np.load(open('/input/bottleneck_features_train.npy'))
-validation_data = np.load(open('/input/bottleneck_features_validation.npy'))
+print('Loading Bottleneck Features Data and Labels...')
 
-#Load Labels
-print('Loading Labels...')
-labels = np.loadtxt('/input/train.txt')
-labels.astype(float)
+if instance_flag==0:
+	train_data = np.load(open('data/bottleneck_features_train.npy'))
+	validation_data = np.load(open('data/bottleneck_features_validation.npy'))
+	labels = np.loadtxt('data/train.txt')
+	labels.astype(float)
+else:
+	train_data = np.load(open('/input/bottleneck_features_train.npy'))
+	validation_data = np.load(open('/input/bottleneck_features_validation.npy'))
+	labels = np.loadtxt('/input/train.txt')
+	labels.astype(float)
+
+
 y_train= labels[0:nb_train_samples]
 y_validation=labels[nb_train_samples:len(labels)]
 
@@ -153,5 +159,8 @@ model.fit_generator(generator(X_train, y_train, batch_size, timesteps, 0),
 	steps_per_epoch=batch_size, epochs=50, validation_data=generator(X_validation, y_validation, batch_size, timesteps, 1), validation_steps=nb_validation_samples)
 
 print('Training Successful - Saving Weights...')
-model.save_weights('/output/lstm_speed_model.h5')
 
+if instance_flag==0:
+	model.save_weights('data/lstm_speed_model.h5')
+else:
+	model.save_weights('/output/lstm_speed_model.h5')
