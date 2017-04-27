@@ -44,7 +44,7 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 			index= np.random.randint(0, nb_train_samples-1, size = 1, dtype=np.int64)
 		else:
 			index= np.random.randint(0, nb_validation_samples-1, size = 1, dtype=np.int64)
-			
+
 		dataX = features[index,]
 		dataY = labels[index]
 
@@ -138,14 +138,7 @@ X_validation=np.reshape(validation_data, (nb_validation_samples, -1))
 X_train.astype(float)
 X_validation.astype(float)
 
-print('Final Data Shape = [xtrain, xvalidation, ytain, yvalidation]', X_train.shape , X_validation.shape, y_train.shape, y_validation.shape)
-
-#model = Sequential()
-# Regression layer
-#model.add(TimeDistributed(LSTM(units=128), input_shape=(None, timesteps, features_size)))
-#model.add(TimeDistributed(Dense(units=1), input_shape=(None,timesteps)))
-#model.add(GlobalAveragePooling1D())
-#model.add(Activation('linear'))
+print('Final Data Shape = [X_train, X_validation, y_train, y_validation]', X_train.shape , X_validation.shape, y_train.shape, y_validation.shape)
 
 print('Building Model...')
 
