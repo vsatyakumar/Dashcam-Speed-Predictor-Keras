@@ -6,6 +6,7 @@ from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirecti
 from keras.regularizers import l1
 from keras import applications
 from keras.layers.normalization import BatchNormalization
+from sklearn.preprocessing import MinMaxScaler
 
 # dimensions of our images.
 #img_width, img_height = 224, 224
@@ -18,7 +19,7 @@ nb_train_samples = 14280
 nb_validation_samples = 6120
 nb_batches_per_epoch=10
 nb_epochs=50
-instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
+instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
 #MAIN
 nb_train_samples = 14280
 nb_validation_samples = 6120
@@ -36,11 +37,13 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 	print('Generator Active')
 	batch_features=np.empty((0,timesteps, features_size))
 	batch_labels=np.empty((1,0))
+	index=timesteps
 
 	while True:
 
 		#print (batch_features.shape, batch_labels.shape )
-		if flag == 0:
+
+		if flag == 0 :
 			index= np.random.randint(0, nb_train_samples-1, size = 1, dtype=np.int64)
 		else:
 			index= np.random.randint(0, nb_validation_samples-1, size = 1, dtype=np.int64)
@@ -87,14 +90,12 @@ def buildmodel(summary):
 	#model.add(Merge([left, right], mode = 'concat'))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=False)))
-	model.add(LSTM(128, activation='relu', recurrent_activation='hard_sigmoid', return_sequences=True, input_shape=(timesteps,features_size)))
-	model.add(LSTM(128, activation='relu', return_sequences=False))
-	model.add(Dense(128, activation='softplus'))
+	model.add(Bidirectional(GRU(100, activation='relu', recurrent_activation='hard_sigmoid', return_sequences=True), input_shape=(timesteps,features_size)))
+	model.add(Bidirectional(GRU(10, activation='relu', recurrent_activation='hard_sigmoid',return_sequences=False)))
+	model.add(Dense(250, activation='relu'))
 	model.add(BatchNormalization())
-	model.add(Dense(100, activation='softplus'))
-	model.add(BatchNormalization())
-	model.add(Dropout(0.5))
-	model.add(Dense(3, activation='relu'))
+	model.add(Dropout(0.1))
+	model.add(Dense(250, activation='relu'))
 	model.add(BatchNormalization())
 	model.add(Dropout(0.5))
 	model.add(Dense(1, activation='linear'))
@@ -117,17 +118,19 @@ if instance_flag==0:
 	train_data = np.load(open('data/bottleneck_features_train.npy'))
 	validation_data = np.load(open('data/bottleneck_features_validation.npy'))
 	labels = np.loadtxt('data/train.txt')
-	labels.astype(float)
+	#labels.astype(float)
 else:
 	train_data = np.load(open('/input/bottleneck_features_train.npy'))
 	validation_data = np.load(open('/input/bottleneck_features_validation.npy'))
 	labels = np.loadtxt('/input/train.txt')
-	labels.astype(float)
+	#labels.astype(float)
 
 
-y_train= labels[0:nb_train_samples]
-y_validation=labels[nb_train_samples:len(labels)]
-
+scaler = MinMaxScaler(feature_range=(0, 1))
+speeds = scaler.fit_transform(labels)
+speeds.astype(float)
+y_train= speeds[0:nb_train_samples]
+y_validation= speeds[nb_train_samples:len(labels)]
 
 #print keras.backend.shape(train_data)
 #print keras.backend.shape(validation_data)
@@ -148,7 +151,7 @@ validation_generator = generator(X_train, y_train, batch_size, timesteps, 1)
 
 print('Training...')
 
-model.fit_generator(train_generator, steps_per_epoch=20, epochs=5, verbose=1, validation_data=validation_generator, validation_steps=10)
+model.fit_generator(train_generator, steps_per_epoch=200, epochs=5, verbose=1, validation_data=validation_generator, validation_steps=100)
 
 print('Training Successful - Saving Weights...')
 
