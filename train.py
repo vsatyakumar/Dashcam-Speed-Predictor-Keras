@@ -19,7 +19,7 @@ nb_train_samples = 14280
 nb_validation_samples = 6120
 nb_batches_per_epoch=10
 nb_epochs=50
-instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
+instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
 #MAIN
 nb_train_samples = 14280
 nb_validation_samples = 6120
@@ -81,6 +81,7 @@ def generator(features, labels, batch_size, timesteps, flag=0):
 			dataX=[]
 			dataY=[]
 			TrainY =  np.transpose(batch_labels, (1, 0))
+			#print(batch_features.shape, TrainY.shape)
 			yield batch_features, TrainY
 		
 #Build Model
@@ -90,8 +91,8 @@ def buildmodel(summary):
 	#model.add(Merge([left, right], mode = 'concat'))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=False)))
-	model.add(Bidirectional(GRU(100, activation='relu', recurrent_activation='hard_sigmoid', return_sequences=True), input_shape=(timesteps,features_size)))
-	model.add(Bidirectional(GRU(10, activation='relu', recurrent_activation='hard_sigmoid',return_sequences=False)))
+	model.add(Bidirectional(GRU(100, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
+	model.add(Bidirectional(GRU(10, activation='relu',return_sequences=False)))
 	model.add(Dense(250, activation='relu'))
 	model.add(BatchNormalization())
 	model.add(Dropout(0.1))
@@ -147,15 +148,15 @@ print('Building Model...')
 
 model = buildmodel(summary=1)
 train_generator = generator(X_train, y_train, batch_size, timesteps, 0)
-validation_generator = generator(X_train, y_train, batch_size, timesteps, 1)
+validation_generator = generator(X_validation, y_validation, batch_size, timesteps, 1)
 
 print('Training...')
 
-model.fit_generator(train_generator, steps_per_epoch=200, epochs=5, verbose=1, validation_data=validation_generator, validation_steps=100)
+model.fit_generator(train_generator, steps_per_epoch=200, epochs=10, verbose=1, validation_data=validation_generator, validation_steps=10)
 
 print('Training Successful - Saving Weights...')
 
 if instance_flag==0:
-	model.save_weights('data/lstm_speed_model.h5')
+	model.save_weights('data/lstm_speed_model_weights.h5')
 else:
-	model.save_weights('/output/lstm_speed_model.h5')
+	model.save_weights('/output/lstm_speed_model_weights.h5')
