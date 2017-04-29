@@ -18,8 +18,8 @@ np.random.seed(7)
 nb_train_samples = 14280
 nb_validation_samples = 6120
 nb_batches_per_epoch=10
-nb_epochs=50
-instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
+#nb_epochs=50
+instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
 #MAIN
 nb_train_samples = 14280
 nb_validation_samples = 6120
