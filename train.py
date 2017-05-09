@@ -2,33 +2,37 @@ import os
 import numpy as np
 import tensorflow as tf
 from keras.models import Sequential
+from keras.optimizers import SGD
+
 from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirectional, Activation, TimeDistributed, GlobalAveragePooling1D, Merge, GRU
 from keras.regularizers import l1
 from keras import applications
 from keras.layers.normalization import BatchNormalization
-from sklearn.preprocessing import MinMaxScaler
-
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn import random_projection
+from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 # dimensions of our images.
 #img_width, img_height = 224, 224
 
 # fix random seed for reproducibility
-np.random.seed(7)
+np.random.seed(100)
 #train_data_dir = '/input/data/images/train'
 #validation_data_dir = '/input/data/images/validation'
 nb_train_samples = 14280
 nb_validation_samples = 6120
 nb_batches_per_epoch=10
 #nb_epochs=50
-instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
+instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
 #MAIN
 nb_train_samples = 14280
 nb_validation_samples = 6120
-lstm_num_timesteps=10 #How many timesteps of features are being fed per sample of a batch. 
+#lstm_num_timesteps=10 #How many timesteps of features are being fed per sample of a batch. 
 
 
 batch_size=20 #Samples per batch.
-timesteps=10 #Timesteps per sample
-features_size=2048
+timesteps=20 #Timesteps per sample
+#features_size=2048
+
 
 
 #Define Generator
@@ -91,21 +95,21 @@ def buildmodel(summary):
 	#model.add(Merge([left, right], mode = 'concat'))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
 	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=False)))
-	model.add(Bidirectional(GRU(100, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
-	model.add(Bidirectional(GRU(10, activation='relu',return_sequences=False)))
-	model.add(Dense(250, activation='relu'))
-	model.add(BatchNormalization())
-	model.add(Dropout(0.1))
-	model.add(Dense(250, activation='relu'))
-	model.add(BatchNormalization())
+	model.add(BatchNormalization(input_shape=(timesteps, features_size)))
+	model.add(Bidirectional(GRU(100, activation='tanh', recurrent_activation='hard_sigmoid' , return_sequences=True)))
+	#model.add(BatchNormalization())
+	model.add(Bidirectional(GRU(100, activation='tanh', recurrent_activation='hard_sigmoid',return_sequences=False)))
+	model.add(Dense(100, activation='relu'))
 	model.add(Dropout(0.5))
+	model.add(Dense(50, activation='relu'))
+	model.add(Dropout(0.1))
 	model.add(Dense(1, activation='linear'))
 
 
 	print('Compiling Model...')
-	
-	model.compile(optimizer='adam',
-		loss='mse',
+	sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+	model.compile(optimizer=sgd,
+		loss='mean_absolute_error',
 		metrics=['accuracy'])
 
 	if summary:
@@ -129,15 +133,23 @@ else:
 
 scaler = MinMaxScaler(feature_range=(0, 1))
 speeds = scaler.fit_transform(labels)
-speeds.astype(float)
+#speeds.astype(float)
+print speeds
 y_train= speeds[0:nb_train_samples]
 y_validation= speeds[nb_train_samples:len(labels)]
-
 #print keras.backend.shape(train_data)
 #print keras.backend.shape(validation_data)
 
-X_train=np.reshape(train_data, (nb_train_samples, -1))
-X_validation=np.reshape(validation_data, (nb_validation_samples, -1))
+x_train=np.reshape(train_data, (nb_train_samples, -1))
+x_validation=np.reshape(validation_data, (nb_validation_samples, -1))
+
+transformer = random_projection.GaussianRandomProjection(eps=0.5)
+X_train= transformer.fit_transform(x_train)
+
+features_size=X_train.shape[1]
+
+transformer = random_projection.GaussianRandomProjection(features_size)
+X_validation=transformer.fit_transform(x_validation)
 
 X_train.astype(float)
 X_validation.astype(float)
@@ -152,11 +164,31 @@ validation_generator = generator(X_validation, y_validation, batch_size, timeste
 
 print('Training...')
 
-model.fit_generator(train_generator, steps_per_epoch=200, epochs=10, verbose=1, validation_data=validation_generator, validation_steps=10)
+earlyStopping= EarlyStopping(monitor='val_loss', patience=3, verbose=1, mode='auto')
+tensorboard = TensorBoard(log_dir='./logs', histogram_freq=0,
+                       write_graph=True, write_images=False)
+
+
+if instance_flag==0:
+	checkpointer = ModelCheckpoint(filepath="./dashcam_weights.hdf5", verbose=1, save_best_only=True)
+else:
+	checkpointer = ModelCheckpoint(filepath="/output/dashcam_weights.hdf5", verbose=1, save_best_only=True)
+
+training = model.fit_generator(train_generator, steps_per_epoch=10, epochs=10, verbose=1, validation_data=validation_generator, validation_steps=4, callbacks=[tensorboard, earlyStopping, checkpointer])
 
 print('Training Successful - Saving Weights...')
 
-if instance_flag==0:
-	model.save_weights('data/lstm_speed_model_weights.h5')
-else:
-	model.save_weights('/output/lstm_speed_model_weights.h5')
+loss_history = training.history["val_loss"]
+accuracy_history = training.history["val_acc"]
+
+numpy_loss_history = np.array(loss_history)
+numpy_accuracy_history = np.array(accuracy_history)
+
+
+np.savetxt("./loss_history.txt", numpy_loss_history, delimiter=",")
+np.savetxt("./accuracy_history.txt", numpy_accuracy_history, delimiter=",")
+
+#if instance_flag==0:
+#	model.save_weights('data/dashcam_weights.hdf5')
+#else:
+#	model.save_weights('/output/lstm_speed_model_weights.hdf5')
