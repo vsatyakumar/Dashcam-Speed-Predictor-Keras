@@ -2,7 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 from keras.models import Sequential
-from keras.optimizers import SGD, RMSprop
+from keras.optimizers import SGD, RMSprop, Adagrad
 
 from keras.layers import Dropout, Flatten, Dense, Convolution2D, LSTM, Bidirectional, Activation, TimeDistributed, GlobalAveragePooling1D, Merge, GRU
 from keras import applications
@@ -14,7 +14,7 @@ from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 #img_width, img_height = 224, 224
 
 # fix random seed for reproducibility
-np.random.seed(10)
+np.random.seed(1000)
 #train_data_dir = '/input/data/images/train'
 #validation_data_dir = '/input/data/images/validation'
 nb_train_samples = 14280
@@ -26,111 +26,100 @@ nb_validation_samples = 6120
 #lstm_num_timesteps=10 #How many timesteps of features are being fed per sample of a batch. 
 
 
-batch_size=32 #Samples per batch.
-timesteps=3 #Timesteps per sample
+batch_size=10 #Samples per batch.
+timesteps=5 #Timesteps per sample
 #features_size=2048
 
 global start
+global starter
 start=1
 #Define Generator
-def generator(features, labels, batch_size, timesteps, start, flag=0):
+
+train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
+
+validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
+
+#Define Smooth L1 Loss
+def l1_smooth_loss(y_true, y_pred):
+    abs_loss = tf.abs(y_true - y_pred)
+    sq_loss = 0.5 * (y_true - y_pred)**2
+    l1_loss = tf.where(tf.less(abs_loss, 1.0), sq_loss, abs_loss - 0.5)
+    return tf.reduce_sum(l1_loss, -1)
+
+def generator(features, labels, batch_size, timesteps, flag=0):
 	count=0
 	print('Generator Active')
 	batch_features=np.empty((0,timesteps, features_size))
 	batch_labels=np.empty((1,0))
-	
+
 	while True:
 
-		#print (batch_features.shape, batch_labels.shape )
-
 		if flag == 0 :
-			#index= np.random.randint(0, nb_train_samples-1, size = 1, dtype=np.int64)
-			
-			if start==1:
-			 	index= np.random.randint(0, nb_train_samples-10, size = 1, dtype=np.int64)
-			 	start=3
-			else: 
-				index = old_index+1
+			index = train_index_pointer.pop(np.random.randint(1,len(train_index_pointer)))
+		else:
+			index = validation_index_pointer.pop(np.random.randint(1,len(validation_index_pointer)))
+
+
+		#int(index, flag)		
 		
-		else :
-
-			if start==1:
-			 	index = timesteps
-			 	start=3
-			else:
-				index = old_index+1
-
-			#index= np.random.randint(0, nb_validation_samples-1, size = 1, dtype=np.int64)
-
-
 		dataX = features[index,]
-		dataY = labels[index]
-		old_index=index
-		#print('Currently Processing this frame and 6 frames behind', index)
+		dataY = labels[index,]
 
 		#Create One sample of (timesteps, features_size)
-
 		for j in range(1,timesteps):
 			pointer = index-j
-			#print(pointer)
 			x = features[pointer,]
 			y = labels[pointer,]
-			#print(y.shape)
 			dataX = np.vstack((dataX,x))
 			dataY= np.vstack((dataY,y))
+			
 
 		dataY = np.mean(dataY, axis=0)
-
-		#yield dataX, dataY
 		dataX=np.expand_dims(dataX, axis=0)
 		dataY=np.expand_dims(dataY, axis=0)
-		#print(dataX.shape, dataY.shape)
 
+		#Stack samples to create batch
 		batch_features = np.vstack((batch_features,dataX))
 		batch_labels = np.column_stack((batch_labels,dataY))
 
-		#print(batch_features.shape, batch_labels.shape)
-
 		count+=1
-		#print count
 		if count == batch_size:
-			#print("Batch Features Dims , Batch Labels Dims =" batch_features.input_shape, batch_labels.shape)
-			#print("Iteration number = ",count)
 			count=0
 			dataX=[]
 			dataY=[]
 			TrainY =  np.transpose(batch_labels, (1, 0))
-			#print(batch_features.shape, TrainY.shape)
-			#print('A batch is being yielded at index and ', index)
 			yield batch_features, TrainY
 		
 #Build Model
 def buildmodel(summary):
-	#Define hyperparameters and compile model"""
+
+	#Define hyperparameters
     
 	lr = 0.001
-	weight_init='glorot_uniform'
-	loss = 'mean_absolute_error'
+	weight_init='glorot_normal'
 
+	#Define Model
 	model=Sequential()
-	#model.add(Merge([left, right], mode = 'concat'))
-	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=True), input_shape=(timesteps,features_size)))
-	#model.add(Bidirectional(LSTM(128, activation='relu', return_sequences=False)))
 	model.add(BatchNormalization(input_shape=(timesteps, features_size)))
-	model.add(Bidirectional(GRU(100, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid' , return_sequences=True)))
-	#model.add(BatchNormalization())
-	model.add(Bidirectional(GRU(100, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False)))
-	model.add(Dense(100, init=weight_init, activation='relu'))
-	model.add(Dropout(0.8))
-	model.add(Dense(50, init=weight_init, activation='relu'))
+	model.add(Bidirectional(GRU(64, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=True)))
+	model.add(Bidirectional(GRU(32, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False)))
+	model.add(Dense(32, init=weight_init, activation='relu'))
+	model.add(BatchNormalization())
+	model.add(Dropout(0.2))
+	model.add(Dense(32, init=weight_init, activation='relu'))
+	model.add(BatchNormalization())
 	model.add(Dropout(0.5))
+	model.add(Dense(16, init=weight_init, activation='relu'))
+	model.add(BatchNormalization())
+	model.add(Dropout(0.1))
 	model.add(Dense(1, init=weight_init, activation='linear'))
 
 
 	print('Compiling Model...')
 	#sgd = SGD(lr=lr, decay=1e-6, momentum=0.9, nesterov=True)
-	model.compile(optimizer=RMSprop(lr),
-		loss=loss,
+	optimize=RMSprop(lr)
+	model.compile(optimizer=optimize,
+		loss=l1_smooth_loss,
 		metrics=['accuracy'])
 
 	if summary:
@@ -144,27 +133,25 @@ if instance_flag==0:
 	train_data = np.load(open('data/bottleneck_features_train.npy'))
 	validation_data = np.load(open('data/bottleneck_features_validation.npy'))
 	labels = np.loadtxt('data/train.txt')
-	#labels.astype(float)
+	labels.astype(float)
 else:
 	train_data = np.load(open('/input/bottleneck_features_train.npy'))
 	validation_data = np.load(open('/input/bottleneck_features_validation.npy'))
 	labels = np.loadtxt('/input/train.txt')
-	#labels.astype(float)
+	labels.astype(float)
 
 
 scaler = MinMaxScaler(feature_range=(0, 1))
 speeds = scaler.fit_transform(labels)
 #speeds.astype(float)
-print speeds
+
 y_train= speeds[0:nb_train_samples]
 y_validation= speeds[nb_train_samples:len(labels)]
-#print keras.backend.shape(train_data)
-#print keras.backend.shape(validation_data)
-
 x_train=np.reshape(train_data, (nb_train_samples, -1))
 x_validation=np.reshape(validation_data, (nb_validation_samples, -1))
 
-transformer = random_projection.GaussianRandomProjection(eps=0.5)
+#Reduce Dimensions
+transformer = random_projection.SparseRandomProjection(eps=0.7)
 X_train= transformer.fit_transform(x_train)
 
 features_size=X_train.shape[1]
@@ -180,8 +167,8 @@ print('Final Data Shape = [X_train, X_validation, y_train, y_validation]', X_tra
 print('Building Model...')
 
 model = buildmodel(summary=1)
-train_generator = generator(X_train, y_train, batch_size, timesteps, 1, 0)
-validation_generator = generator(X_validation, y_validation, batch_size, timesteps, 1, 1)
+train_generator = generator(X_train, y_train, batch_size, timesteps, 0)
+validation_generator = generator(X_validation, y_validation, batch_size, timesteps, 1)
 
 
 print('Training...')
@@ -196,7 +183,7 @@ if instance_flag==0:
 else:
 	checkpointer = ModelCheckpoint(filepath="/output/dashcam_weights.hdf5", verbose=1, save_best_only=True)
 
-training = model.fit_generator(train_generator, steps_per_epoch=10, epochs=10, verbose=1, validation_data=validation_generator, validation_steps=5, callbacks=[tensorboard, earlyStopping, checkpointer])
+training = model.fit_generator(train_generator, steps_per_epoch=10, epochs=20, verbose=1, validation_data=validation_generator, validation_steps=10, callbacks=[tensorboard, earlyStopping, checkpointer])
 
 print('Training Successful - Saving Weights...')
 
