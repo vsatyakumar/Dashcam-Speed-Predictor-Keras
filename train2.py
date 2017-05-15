@@ -4,46 +4,40 @@ import tensorflow as tf
 import cv2
 import argparse
 from keras.applications import imagenet_utils
-from keras.preprocessing.image import img_to_array
-from keras.preprocessing.image import load_img
-from keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import img_to_array, load_img, ImageDataGenerator
 from keras.models import Sequential, Model
-
-#from keras.applications import Xception
-#import imageio
-#import glob
+from keras.models import model_from_json
 from keras.optimizers import RMSprop
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Reshape
-from keras.layers import Dropout, Flatten, Dense, Conv2D, LSTM, Merge, Bidirectional, Activation, TimeDistributed, GRU, MaxPooling2D, Input, BatchNormalization, GlobalAveragePooling2D, SeparableConv2D
-#rom sklearn.preprocessing import MinMaxScaler, StandardScaler
-#from sklearn import random_projection
-from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
-#from keras_squeezenet import SqueezeNet, fire_module
+from keras.layers import Dropout, Flatten, Dense, Conv2D, LSTM, Merge, Bidirectional, Activation, TimeDistributed, GRU, MaxPooling2D, Input, BatchNormalization, GlobalAveragePooling2D, SeparableConv2D, Cropping2D
+from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, History
 from random import randint
 from keras import backend as K
+
+
 # fix random seed for reproducibility
 np.random.seed(2000)
 # dimensions of our images.
-img_width, img_height = 224,224
+img_width, img_height = 150,150
 nb_train_samples = 14280
 nb_validation_samples = 6120
-train_batch_size=32
-validation_batch_size=32
+train_batch_size=10
+validation_batch_size=10
 val_steps=10
-train_steps=50
+train_steps=10
 nb_epoch=100
 channels=3 #RGB
 timesteps=3
 nb_conv_layers=1
 nb_rnn_layers = 1
-frequency=20 #Gap between frames
+frequency=60 #Gap between frames
 
-#global trainbag, validationbag
-#train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
-#validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
-#trainbag=len(train_index_pointer)
-#validationbag=len(validation_index_pointer)
+global trainbag, validationbag
+train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
+validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
+trainbag=len(train_index_pointer)
+validationbag=len(validation_index_pointer)
 
 instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
 
@@ -62,7 +56,8 @@ def train():
     
     if instance_flag==0:
         checkpointer = ModelCheckpoint(filepath="./weights/dashcam_weights-{epoch:02d}-{val_mean_squared_error:.2f}.hdf5", verbose=1, save_best_only=True)
-        tensorboard = TensorBoard(log_dir='./logs', histogram_freq=0, write_graph=True, write_images=False)
+        tensorboard = TensorBoard(log_dir='./logs/', histogram_freq=0, write_graph=True, write_images=False)
+        history = LossHistory()
     else:
         checkpointer = ModelCheckpoint(filepath="/output/weights/dashcam_weights-{epoch:02d}-{val_mean_squared_error:.2f}.hdf5", verbose=1, save_best_only=True)
         tensorboard = TensorBoard(log_dir='/output/logs', histogram_freq=0, write_graph=True, write_images=False)
@@ -86,20 +81,19 @@ def train():
     
     model.fit_generator(train_generator, steps_per_epoch=50, epochs=20, verbose=1, validation_data=validation_generator, validation_steps=10, callbacks=[tensorboard, earlyStopping, checkpointer])
     
-    loss_history = model.history["val_loss"]
-    mse_history = model.history["val_mean_squared_error"]
-    numpy_loss_history = np.array(loss_history)
-    numpy_mse_history = np.array(mse_history)
-    
-    print('Training Successful - Saving History...')
-
+        # serialize model to JSON
+    model_json = model.to_json()
+    with open("./model/speed-predictor-keras-model-{val_mean_squared_error:.2f}.json", "w") as json_file:
+        json_file.write(model_json)
+    # serialize weights to HDF5
+    print("Saving Model to disk...")
+    print('Saving History...')
     if instance_flag==0:
+        loss_history = model.History()
+        numpy_loss_history = np.array(loss_history)
         np.savetxt("./loss_history.txt", numpy_loss_history, delimiter=",")
-        np.savetxt("./mse_history.txt", numpy_mse_history, delimiter=",")
     else:
         np.savetxt("/ouput/logs/loss_history.txt", numpy_loss_history, delimiter=",")
-        np.savetxt("/output/logs/mse_history.txt", numpy_mse_history, delimiter=",")
-    
     return
 
 def buildmodel(summary):
@@ -120,41 +114,37 @@ def buildmodel(summary):
     data= Input(shape=(None,img_width,img_height,channels))
     #Define Sequential Model
     convs= Sequential()
-    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, input_shape=(img_width,img_height, channels)))
-    convs.add(BatchNormalization(axis=3))
-    convs.add(Act)
-    convs.add(Conv2D(64, (3, 3), kernel_initializer=weight_init, padding="same", bias=False))
-    convs.add(BatchNormalization(axis=3))
-    convs.add(Act)
+    convs.add(BatchNormalization(axis=3, input_shape=(img_width,img_height, channels)))
+    convs.add(Cropping2D(cropping=((60,10),(10,10))))
+    convs.add(Conv2D(8, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu'))
+    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu'))
+    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu'))
     convs.add(MaxPooling2D((2, 2), strides=(2, 2), padding='same'))
-    convs.add(Conv2D(128, (3, 3), kernel_initializer=weight_init, padding="same", bias=False))
-    convs.add(BatchNormalization(axis=3))
-    convs.add(Act)
+    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu'))
+    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu'))
     convs.add(GlobalAveragePooling2D())
     
     x=TimeDistributed(convs)(data)
 
-    x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=True, input_shape=(timesteps,None)))(x)
-    x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False))(x)
-    x = Dense(units=256, kernel_initializer=weight_init, bias=False)(x)
-    x= BatchNormalization()(x)
+    x=Bidirectional(GRU(32, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False, input_shape=(timesteps,None)))(x)
+    #x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False))(x)
+    x = Dense(units=64, kernel_initializer=weight_init, bias=False)(x)
     x =Act(x)
     x=Dropout(0.2)(x)
-    x = Dense(units=256, kernel_initializer=weight_init, bias=False)(x)
-    x= BatchNormalization()(x)
+    x = Dense(units=4, kernel_initializer=weight_init, bias=False)(x)
     x =Act(x)
     x=Dropout(0.2)(x)
     x=Dense(1, init=weight_init, activation='linear')(x)
 
     model=Model(inputs=data, outputs=x)
 
-    print('Compiling Model...')
     #sgd = SGD(lr=lr, decay=1e-6, momentum=0.8, nesterov=True, clipnorm=0.3)
     optimize=RMSprop(lr=lr, decay=1e-6)
+    print('Compiling Model...')
     model.compile(optimizer=optimize,
         loss=l1_smooth_loss,
         metrics=['mse'])
-
+    
     if summary:
         print(model.summary())
         return model
@@ -170,6 +160,7 @@ def preprocess_img(img):
     # rescale to standard size
     img = cv2.resize(img,(img_width, img_height), interpolation = cv2.INTER_AREA)
 
+    #img=np.array(img, dtype=np.uint8)
     #-----Converting image to LAB Color model----------------------------------- 
     lab= cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
 
@@ -188,9 +179,13 @@ def preprocess_img(img):
     img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
     img= np.array(img, dtype=np.float)
     img/= 255.0
+    #img = np.swapaxes(img,0,1)
     img=np.expand_dims(img,axis=0)
-    return img
 
+    # roll color axis to axis 0
+    #img = np.swapaxes(img,0,1)
+
+    return img
 
 #Define Smooth L1 Loss
 def l1_smooth_loss(y_true, y_pred):
@@ -198,7 +193,6 @@ def l1_smooth_loss(y_true, y_pred):
     sq_loss = 0.5 * (y_true - y_pred)**2
     l1_loss = tf.where(tf.less(abs_loss, 1.0), sq_loss, abs_loss - 0.5)
     return tf.reduce_sum(l1_loss, -1)    
-
 
 def generator(labels, flag):
     count=0
