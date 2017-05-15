@@ -19,6 +19,7 @@ from keras import backend as K
 #Initializations yo.
 
 np.random.seed(2000)
+learning_rate = 0.001
 img_width, img_height = 160,160
 nb_train_samples = 14280
 nb_validation_samples = 6120
@@ -34,14 +35,26 @@ nb_rnn_layers = 1
 frequency=60 #Gap between successive frames being fed to the model. Not to be confused with FPS (Which is 20, if you're wondering)
 fps=20
 
+
+#Define hyperparameters
+weight_init='glorot_uniform'
+stateful=False
+Act =LeakyReLU(alpha=0.3)
+#l1_gru=0.1
+#l2_gru=0.5
+#l1_dense=0.1
+#l2_de48e=0.5
+#l1_conv=0.1
+#l2_conv=0.5
+
+
+instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
+
 global trainbag, validationbag
 train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
 validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
 trainbag=len(train_index_pointer)
 validationbag=len(validation_index_pointer)
-
-instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
-
 
 if instance_flag==0:
     root_dir, _ = os.path.split(os.path.abspath(__file__))
@@ -99,49 +112,37 @@ def train():
 
 def buildmodel(summary):
 
-    #Define hyperparameters
-    
-    lr = 0.001
-    weight_init='glorot_uniform'
-    stateful=False
-    Act =LeakyReLU(alpha=0.3)
-    #l1_gru=0.1
-    #l2_gru=0.5
-    #l1_dense=0.1
-    #l2_dense=0.5
-    #l1_conv=0.1
-    #l2_conv=0.5
-
     data= Input(shape=(None,img_width,img_height,channels))
     #Define Sequential Model
     convs= Sequential()
     convs.add(Lambda(lambda x: x/127.5 - 1.,input_shape=(img_width, img_height, channels)))
     convs.add(BatchNormalization(axis=3))
-    convs.add(Cropping2D(cropping=((60,10),(10,10))))
-    convs.add(Conv2D(8, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_1_1"))
-    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_1_2"))
-    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_1_3"))
+    convs.add(Cropping2D(cropping=((48,12),(12,12))))
+    convs.add(Conv2D(8, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_1"))
+    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_2"))
+    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_3"))
     convs.add(MaxPooling2D((2, 2), strides=(2, 2), padding='same'))
-    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_2_1"))
-    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_2_2"))
-    convs.add(Conv2D(64, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='relu',name="conv_2_3"))
+    #convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_1"))
+    #convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_2"))
+    #convs.add(Conv2D(64, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_3"))
     convs.add(GlobalAveragePooling2D())
     
     x=TimeDistributed(convs)(data)
     x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False, input_shape=(timesteps,None,),name="gru_1"))(x)
     #x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False))(x)
-    x = Dense(units=64, kernel_initializer=weight_init, bias=False,name="dense_1")(x)
-    x =Act(x) 
+    x=BatchNormalization(axis=1)(x)
+    x = Dense(units=256, init=weight_init, bias=False)(x)
+    x =Activation('elu')(x)
     x=Dropout(0.2)(x)
-    x = Dense(units=16, kernel_initializer=weight_init, bias=False,name="dense_2")(x)
-    x =Act(x)
+    x = Dense(units=256, init=weight_init, bias=False)(x)
+    x =Activation('elu')(x)
     x=Dropout(0.2)(x)
-    x=Dense(1, kernel_initializer=weight_init, activation='linear',name="speed")(x)
+    x=Dense(1, init=weight_init, activation='linear')(x)
 
     model=Model(inputs=data, outputs=x)
-
+    decay_rate = learning_rate / nb_epoch
     #sgd = SGD(lr=lr, decay=1e-6, momentum=0.8, nesterov=True, clipnorm=0.3)
-    optimize=RMSprop(lr=lr, decay=1e-6)
+    optimize=RMSprop(lr=learning_rate, decay=decay_rate)
     print('Compiling Model...')
     model.compile(optimizer=optimize,
         loss=l1_smooth_loss,
