@@ -152,7 +152,6 @@ def buildmodel(summary):
         return model
 
 def preprocess_img(img):
-    #Histogram normalization in v channel
     # central square crop
     min_side = min(img.shape[:-1])
     centre = img.shape[0]//2, img.shape[1]//2
@@ -162,15 +161,15 @@ def preprocess_img(img):
     # rescale to standard size
     img = cv2.resize(img,(img_width, img_height), interpolation = cv2.INTER_AREA)
 
-    #NOTE-------------CLAHE hurts performance!----------------------------------
-    #Reference for the claim (tested personally) : https://arxiv.org/pdf/1606.02228v2.pdf----
-    #Global [42] and local(CLAHE [43]) histogram equalizations hurt performance as well
+    #NOTE-------------CLAHE hurts performance!--------------------------------------------------
+    #Reference for the claim (and I can vouch for it. ) : https://arxiv.org/pdf/1606.02228v2.pdf
+    #"Quote: Global [42] and local(CLAHE [43]) histogram equalizations hurt performance as well"
     
 
     #img=np.array(img, dtype=np.uint8)
     #lab= cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     #l, a, b = cv2.split(lab)
-    #-----Applying CLAHE to L-channel-------------------------------------------
+    #-----Applying CLAHE to L-channel---------------------------
     #clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     #cl = clahe.apply(l)
     #limg = cv2.merge((cl,a,b))
