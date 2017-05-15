@@ -14,38 +14,39 @@ from keras.layers import Dropout, Flatten, Dense, Conv2D, LSTM, Merge, Bidirecti
 from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, History
 from random import randint
 from keras import backend as K
-
+from keras.regularizers import l1,l2
 
 #Initializations yo.
 
-np.random.seed(2000)
-learning_rate = 0.000039
-img_width, img_height = 160,160
+np.random.seed(1337)
+learning_rate = 0.000650
+img_width, img_height = 224,224
 nb_train_samples = 14280
 nb_validation_samples = 6120
 train_batch_size=1
-validation_batch_size=1
-val_steps=50
-train_steps=256
-nb_epochs=1000
+validation_batch_size=50
+val_steps=5
+train_steps=50
+nb_epochs=100
 channels=3 #RGB
-timesteps=2
+timesteps=3
 nb_conv_layers=1
 nb_rnn_layers = 1
-frequency=40 #Gap between successive frames being fed to the model. Not to be confused with FPS (Which is 20, if you're wondering)
+frequency=2 #Gap between successive frames being fed to the model. Not to be confused with FPS (Which is 20, if you're wondering)
 fps=20
 
 
 #Define hyperparameters
 weight_init='glorot_uniform'
 stateful=False
-Act =LeakyReLU(alpha=0.3)
-#l1_gru=0.1
-#l2_gru=0.5
-#l1_dense=0.1
-#l2_de48e=0.5
-#l1_conv=0.1
-#l2_conv=0.5
+#Act =LeakyReLU(alpha=0.3)
+Act=Activation('elu')
+l1_gru=0.0002
+l2_gru=0.0002
+l1_dense=0.001
+l2_dense=0.001
+l1_conv=0.0002
+l2_conv=0.0002
 
 
 instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
@@ -72,8 +73,8 @@ def train():
         checkpointer = ModelCheckpoint(filepath="./weights/dashcam_weights-{epoch:02d}-{val_mean_squared_error:.2f}.hdf5", verbose=1, save_best_only=True)
         tensorboard = TensorBoard(log_dir='./logs/', histogram_freq=0, write_graph=True, write_images=False)
     else:
-        checkpointer = ModelCheckpoint(filepath="/output/weights/dashcam_weights-{epoch:02d}-{val_mean_squared_error:.2f}.hdf5", verbose=1, save_best_only=True)
-        tensorboard = TensorBoard(log_dir='/output/logs', histogram_freq=0, write_graph=True, write_images=False)
+        checkpointer = ModelCheckpoint(filepath="/output/dashcam_weights-{epoch:02d}-{val_mean_squared_error:.2f}.hdf5", verbose=1, save_best_only=True)
+        tensorboard = TensorBoard(log_dir='/output/', histogram_freq=0, write_graph=True, write_images=False)
 
     y_train= speeds[0:nb_train_samples]
     y_validation= speeds[nb_train_samples:len(speeds)]
@@ -88,7 +89,7 @@ def train():
     validation_generator = generator(y_validation, 1)
 
 
-    earlyStopping= EarlyStopping(monitor='val_mean_squared_error', patience=10, verbose=1, mode='auto')
+    earlyStopping= EarlyStopping(monitor='val_mean_squared_error', patience=30, verbose=1, mode='auto')
 
     print('Training...')
     
@@ -101,12 +102,14 @@ def train():
 
     print("Saving Model to disk...")
     print('Saving History...')
+    
+    loss_history = model.History()
+    numpy_loss_history = np.array(loss_history)
+    
     if instance_flag==0:
-        loss_history = model.History()
-        numpy_loss_history = np.array(loss_history)
         np.savetxt("./loss_history.txt", numpy_loss_history, delimiter=",")
     else:
-        np.savetxt("/ouput/logs/loss_history.txt", numpy_loss_history, delimiter=",")
+        np.savetxt("/ouput/loss_history.txt", numpy_loss_history, delimiter=",")
     return
     print('We are done! Hope that was a terrific training sesh... :)')
 
@@ -117,27 +120,31 @@ def buildmodel(summary):
     convs= Sequential()
     convs.add(Lambda(lambda x: x/127.5 - 1.,input_shape=(img_width, img_height, channels)))
     convs.add(BatchNormalization(axis=3))
-    convs.add(Cropping2D(cropping=((48,12),(12,12))))
-    convs.add(Conv2D(8, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_1"))
-    convs.add(Conv2D(16, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_2"))
-    convs.add(Conv2D(32, (3, 3), strides=(1,1),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_3"))
+    convs.add(Cropping2D(cropping=((80,20),(10,10))))
+    convs.add(Conv2D(16, (5, 5), strides=(2,4),kernel_initializer=weight_init, padding='same', bias=False, activity_regularizer=l1(l1_conv), activation='elu',name="conv_1_1"))
+    convs.add(Conv2D(32, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding='same', bias=False, activity_regularizer=l1(l1_conv),activation='elu',name="conv_1_2"))
+    #convs.add(Conv2D(256, (3, 3), strides=(1,1),kernel_initializer=weight_init, padding="same", bias=False, activity_regularizer=l1(l1_conv),activation='elu',name="conv_1_3"))
+    #convs.add(MaxPooling2D((2, 2), strides=(2,2), padding='same'))
+    #convs.add(Conv2D(16, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding='same', bias=False, activity_regularizer=l1(l1_conv),activation='elu',name="conv_2_1"))
+    convs.add(Conv2D(64, (3, 3),  strides=(212), kernel_initializer=weight_init, padding='same', bias=False, activity_regularizer=l1(l1_conv),activation='elu',name="conv_2_2"))
+    #convs.add(Conv2D(64, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding='same', bias=False, activity_regularizer=l1(l1_conv),activation='elu',name="conv_2_3"))
     convs.add(MaxPooling2D((2, 2), strides=(2,2), padding='same'))
-    convs.add(Conv2D(16, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_1"))
-    convs.add(Conv2D(32, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_2"))
-    convs.add(Conv2D(64, (3, 3), strides=(1,1), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_3"))
+    #convs.add(Conv2D(64, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activity_regularizer=l2(l2_conv),activation='elu',name="conv_3_1"))
+    #convs.add(Conv2D(128, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activity_regularizer=l2(l2_conv),activation='elu',name="conv_3_2"))
+    #convs.add(MaxPooling2D((2, 2), strides=(2,2), padding='same'))
+    #convs.add(Conv2D(64, (3, 3), strides=(1,1), kernel_initializer=weight_init, padding="same", bias=False, activity_regularizer=l2(l2_conv),activation='elu',name="conv_2_3"))
     convs.add(GlobalAveragePooling2D())
-    
+
     x = TimeDistributed(convs)(data)
-    x = Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False, input_shape=(timesteps,None),name="gru_1"))(x)
-    #x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False))(x)
-    x = BatchNormalization(axis=1)(x)
-    x = Dense(256, kernel_initializer=weight_init, bias=False)(x)
-    x = Activation('elu')(x)
-    x = Dropout(0.7)(x)
-    x = Dense(256, kernel_initializer=weight_init, bias=False)(x)
-    x = Activation('elu')(x)
+    x = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', activity_regularizer=l1(l2_gru),return_sequences=False, input_shape=(timesteps,None),name="gru_1"))(x)
+    #x = BatchNormalization(axis=-1)(x)
+    x = Dense(16, kernel_initializer=weight_init, activity_regularizer=l1(l1_dense),bias=False)(x)
+    x = Act(x)
     x = Dropout(0.5)(x)
-    x = Dense(1, kernel_initializer=weight_init, activation='linear')(x)
+    x = Dense(16, kernel_initializer=weight_init, activity_regularizer=l1(l1_dense),bias=False)(x)
+    x = Act(x)
+    x = Dropout(0.2)(x)
+    x = Dense(1, kernel_initializer=weight_init, activation='linear', activity_regularizer=l1(l1_dense))(x)
 
     model = Model(inputs=data, outputs=x)
     decay_rate = learning_rate / nb_epochs
@@ -152,7 +159,7 @@ def buildmodel(summary):
         print(model.summary())
         return model
 
-def preprocess_img(img):
+def preprocess_img(img, flip=0):
     # central square crop
     min_side = min(img.shape[:-1])
     centre = img.shape[0]//2, img.shape[1]//2
@@ -161,6 +168,9 @@ def preprocess_img(img):
               :]
     # rescale to standard size
     img = cv2.resize(img,(img_width, img_height), interpolation = cv2.INTER_AREA)
+    
+    if flip==1:
+        img=cv2.flip(img,1)
 
     #NOTE-------------CLAHE hurts performance!--------------------------------------------------
     #Reference for the claim (and I can vouch for it. ) : https://arxiv.org/pdf/1606.02228v2.pdf
@@ -212,10 +222,11 @@ def generator(labels, flag):
                 #break
             #else:
             ind = np.random.randint(1000,nb_train_samples-1000)
+            flip = np.random.randint(0,1)
             
             index = '{:0>5}'.format(ind)
             dataX = cv2.imread(train_root_dir + '/frame-' + index + '.jpeg',3)
-            dataX =  preprocess_img(dataX)
+            dataX =  preprocess_img(dataX,flip)
             dataY = labels[ind]
         else:
             batch_size=validation_batch_size
@@ -224,12 +235,13 @@ def generator(labels, flag):
                 #print("Out of Validation Data")
                 #break
             #else:
+            flip = np.random.randint(0,1)
             ind = np.random.randint(1000,nb_validation_samples-1000)
             index = ind + nb_train_samples
             index='{:0>5}'.format(index)
             #dataX = imageio.imread(val_root_dir + '/frame-' + index + '.jpeg')
             dataX = cv2.imread(val_root_dir + '/frame-' + index + '.jpeg',3)
-            dataX=preprocess_img(dataX)
+            dataX=preprocess_img(dataX,flip)
             dataY = labels[ind]
             #print("initial datax shape=", dataX.shape)
             #print("Validation Dataset Size", validationbag)
@@ -248,13 +260,13 @@ def generator(labels, flag):
                 pointstr='{0:0>5}'.format(pointer)
                 img = cv2.imread(val_root_dir + '/frame-' + pointstr + '.jpeg',3)
                 #img = imageio.imread(val_root_dir + '/frame-' + pointstr + '.jpeg')
-                img=preprocess_img(img)
+                img=preprocess_img(img, flip)
 
             else:
                 pointstr='{0:0>5}'.format(pointer)
                 #img = imageio.imread(train_root_dir + '/frame-' + pointstr + '.jpeg')
                 img = cv2.imread(train_root_dir + '/frame-' + pointstr + '.jpeg',3)
-                img=preprocess_img(img)
+                img=preprocess_img(img, flip)
             
             
             dataX=np.append(dataX, img, axis=0)
