@@ -39,13 +39,13 @@ nb_conv_layers=1
 nb_rnn_layers = 1
 frequency=20 #Gap between frames
 
-global trainbag, validationbag
-train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
-validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
-trainbag=len(train_index_pointer)
-validationbag=len(validation_index_pointer)
+#global trainbag, validationbag
+#train_index_pointer = list(np.linspace(1,nb_train_samples-1, nb_train_samples, dtype=np.int64))
+#validation_index_pointer = list(np.linspace(1,nb_validation_samples-1, nb_validation_samples, dtype=np.int64))
+#trainbag=len(train_index_pointer)
+#validationbag=len(validation_index_pointer)
 
-instance_flag=1 #0 for loading data from Local, 1 for FloydHub instance
+instance_flag=0 #0 for loading data from Local, 1 for FloydHub instance
 
 
 if instance_flag==0:
@@ -161,7 +161,15 @@ def buildmodel(summary):
 
 def preprocess_img(img):
     #Histogram normalization in v channel
-    img=np.array(img, dtype=np.uint8)
+    # central square crop
+    min_side = min(img.shape[:-1])
+    centre = img.shape[0]//2, img.shape[1]//2
+    img = img[centre[0]-min_side//2:centre[0]+min_side//2,
+              centre[1]-min_side//2:centre[1]+min_side//2,
+              :]
+    # rescale to standard size
+    img = cv2.resize(img,(img_width, img_height), interpolation = cv2.INTER_AREA)
+
     #-----Converting image to LAB Color model----------------------------------- 
     lab= cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
 
@@ -180,23 +188,9 @@ def preprocess_img(img):
     img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
     img= np.array(img, dtype=np.float)
     img/= 255.0
-    #img = np.swapaxes(img,0,1)
-
-    # central square crop
-    min_side = min(img.shape[:-1])
-    centre = img.shape[0]//2, img.shape[1]//2
-    img = img[centre[0]-min_side//2:centre[0]+min_side//2,
-              centre[1]-min_side//2:centre[1]+min_side//2,
-              :]
-    # rescale to standard size
-    img = cv2.resize(img,(img_width, img_height), interpolation = cv2.INTER_AREA)
-    img = np.array(img)
     img=np.expand_dims(img,axis=0)
-
-    # roll color axis to axis 0
-    #img = np.swapaxes(img,0,1)
-
     return img
+
 
 #Define Smooth L1 Loss
 def l1_smooth_loss(y_true, y_pred):
