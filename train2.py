@@ -19,20 +19,20 @@ from keras import backend as K
 #Initializations yo.
 
 np.random.seed(2000)
-learning_rate = 0.001
+learning_rate = 0.000039
 img_width, img_height = 160,160
 nb_train_samples = 14280
 nb_validation_samples = 6120
-train_batch_size=10
-validation_batch_size=10
-val_steps=10
-train_steps=10
-nb_epoch=100
+train_batch_size=1
+validation_batch_size=1
+val_steps=50
+train_steps=256
+nb_epochs=1000
 channels=3 #RGB
-timesteps=3
+timesteps=2
 nb_conv_layers=1
 nb_rnn_layers = 1
-frequency=60 #Gap between successive frames being fed to the model. Not to be confused with FPS (Which is 20, if you're wondering)
+frequency=40 #Gap between successive frames being fed to the model. Not to be confused with FPS (Which is 20, if you're wondering)
 fps=20
 
 
@@ -92,7 +92,7 @@ def train():
 
     print('Training...')
     
-    model.fit_generator(train_generator, steps_per_epoch=50, epochs=20, verbose=1, validation_data=validation_generator, validation_steps=10, callbacks=[tensorboard, earlyStopping, checkpointer])
+    model.fit_generator(train_generator, steps_per_epoch=train_steps, epochs=nb_epochs, verbose=1, validation_data=validation_generator, validation_steps=val_steps, callbacks=[tensorboard, earlyStopping, checkpointer])
     
     #Serialize model to JSON
     model_json = model.to_json()
@@ -118,35 +118,35 @@ def buildmodel(summary):
     convs.add(Lambda(lambda x: x/127.5 - 1.,input_shape=(img_width, img_height, channels)))
     convs.add(BatchNormalization(axis=3))
     convs.add(Cropping2D(cropping=((48,12),(12,12))))
-    convs.add(Conv2D(8, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_1"))
-    convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_2"))
-    convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_3"))
-    convs.add(MaxPooling2D((2, 2), strides=(2, 2), padding='same'))
-    #convs.add(Conv2D(16, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_1"))
-    #convs.add(Conv2D(32, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_2"))
-    #convs.add(Conv2D(64, (3, 3), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_3"))
+    convs.add(Conv2D(8, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_1"))
+    convs.add(Conv2D(16, (3, 3), strides=(2,2),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_2"))
+    convs.add(Conv2D(32, (3, 3), strides=(1,1),kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_1_3"))
+    convs.add(MaxPooling2D((2, 2), strides=(2,2), padding='same'))
+    convs.add(Conv2D(16, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_1"))
+    convs.add(Conv2D(32, (3, 3), strides=(2,2), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_2"))
+    convs.add(Conv2D(64, (3, 3), strides=(1,1), kernel_initializer=weight_init, padding="same", bias=False, activation='elu',name="conv_2_3"))
     convs.add(GlobalAveragePooling2D())
     
-    x=TimeDistributed(convs)(data)
-    x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False, input_shape=(timesteps,None,),name="gru_1"))(x)
+    x = TimeDistributed(convs)(data)
+    x = Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid',return_sequences=False, input_shape=(timesteps,None),name="gru_1"))(x)
     #x=Bidirectional(GRU(16, activation='relu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid', return_sequences=False))(x)
-    x=BatchNormalization(axis=1)(x)
-    x = Dense(units=256, init=weight_init, bias=False)(x)
-    x =Activation('elu')(x)
-    x=Dropout(0.2)(x)
-    x = Dense(units=256, init=weight_init, bias=False)(x)
-    x =Activation('elu')(x)
-    x=Dropout(0.2)(x)
-    x=Dense(1, init=weight_init, activation='linear')(x)
+    x = BatchNormalization(axis=1)(x)
+    x = Dense(256, kernel_initializer=weight_init, bias=False)(x)
+    x = Activation('elu')(x)
+    x = Dropout(0.7)(x)
+    x = Dense(256, kernel_initializer=weight_init, bias=False)(x)
+    x = Activation('elu')(x)
+    x = Dropout(0.5)(x)
+    x = Dense(1, kernel_initializer=weight_init, activation='linear')(x)
 
-    model=Model(inputs=data, outputs=x)
-    decay_rate = learning_rate / nb_epoch
+    model = Model(inputs=data, outputs=x)
+    decay_rate = learning_rate / nb_epochs
     #sgd = SGD(lr=lr, decay=1e-6, momentum=0.8, nesterov=True, clipnorm=0.3)
-    optimize=RMSprop(lr=learning_rate, decay=decay_rate)
+    optimize = RMSprop(lr= learning_rate, decay = decay_rate)
     print('Compiling Model...')
-    model.compile(optimizer=optimize,
-        loss=l1_smooth_loss,
-        metrics=['mse'])
+    model.compile(optimizer = optimize,
+        loss = l1_smooth_loss,
+        metrics =[ 'mse'])
     
     if summary:
         print(model.summary())
