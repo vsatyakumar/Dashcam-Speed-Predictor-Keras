@@ -147,14 +147,14 @@ def buildmodel(summary):
 
     #---------------RECURRENT LAYERS-------------------------------------------------------------
 
-    x1 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, recurrent_activation='' ,return_sequences=False, name='gru_1_0', activity_regularizer=l1_l2(l1_l2_gru) ))(out)
+    x1 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, recurrent_activation='hard_sigmoid' ,return_sequences=False, name='gru_1_0', activity_regularizer=l1_l2(l1_l2_gru) ))(out)
     x1 = Act1(x1)
 
-    out1 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='elu', return_sequences=False, name='gru_1_1'))(resi1)  
+    out1 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='hard_sigmoid', return_sequences=False, name='gru_1_1'))(resi1)  
     out1= Act1(out1)
-    out2 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='elu', return_sequences=False, name='gru_1_2'))(resi2)   
+    out2 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init, activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='hard_sigmoid', return_sequences=False, name='gru_1_2'))(resi2)   
     out2= Act1(out2)
-    out3 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init , activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='elu', return_sequences=False, name='gru_1_3'))(resi3)  
+    out3 = Bidirectional(GRU(64, activation='elu', kernel_initializer=weight_init , activity_regularizer=l1_l2(l1_l2_gru),recurrent_activation='hard_sigmoid', return_sequences=False, name='gru_1_3'))(resi3)  
     out3= Act1(out3)
     #x_2 = Act2(x1)
     #x_3 = Act3(x1)
